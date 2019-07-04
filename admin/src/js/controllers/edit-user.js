@@ -316,6 +316,8 @@ angular
 
             return Promise.reject();
           }
+
+          previousQuery = null;
         });
     };
 
