@@ -206,8 +206,13 @@ const isSensitive = function(userCtx, subject, submitter, allowedSubmitter) {
   return !allowedSubmitter;
 };
 
-const getAllowedDocIds = (feed) => {
-  return db.medic.query('medic/docs_by_replication_key', { keys: feed.subjectIds }).then(results => {
+const getAllowedDocIds = (feed, { includeTombstones = true, limit = 0 }) => {
+  const opts = { keys: feed.subjectIds };
+  if (limit) {
+    opts.limit = limit;
+  }
+
+  return db.medic.query('medic/docs_by_replication_key', opts).then(results => {
     const validatedIds = ['_design/medic-client', 'org.couchdb.user:' + feed.userCtx.name],
           tombstoneIds = [];
 
@@ -217,8 +222,7 @@ const getAllowedDocIds = (feed) => {
       }
 
       if (tombstoneUtils.isTombstoneId(row.id)) {
-        tombstoneIds.push(row.id);
-        return;
+        return includeTombstones && tombstoneIds.push(row.id);
       }
 
       validatedIds.push(row.id);
