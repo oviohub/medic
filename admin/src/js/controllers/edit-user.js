@@ -301,11 +301,9 @@ angular
         .post('/api/v1/users-info', query)
         .then(resp => {
           if (resp.data.warn) {
-            $scope.replicationWarning = query;
-            $translate('configuration.user.replication.limit.exceeded', { total_docs: resp.data.total_docs }).then(value =>{
+            $translate('configuration.user.replication.limit.exceeded', { total_docs: resp.data.total_docs }).then(value => {
               $scope.setError(null, value);
             });
-
             return Promise.reject();
           }
 
@@ -363,7 +361,7 @@ angular
               $scope.setError();
               return;
             }
-            getReplicationInfo().then(() => {
+            return getReplicationInfo().then(() => {
               changedUpdates($scope.editUserModel).then(function(updates) {
                 $q.resolve()
                   .then(function() {

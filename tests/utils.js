@@ -81,6 +81,7 @@ const request = (options, { debug, noAuth, notJson } = {}) => {
 
         const err = new Error(errorMessage);
         err.responseBody = body;
+        err.statusCode = res.statusCode;
         deferred.reject(err);
       }
     });
