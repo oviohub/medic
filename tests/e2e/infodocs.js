@@ -103,7 +103,7 @@ describe('maintaining infodocs', () => {
     });
   };
 
-  fdescribe('maintaining replication dates', () => {
+  describe('maintaining replication dates', () => {
     it('on PUT', () => singleDocTest('PUT'));
     it('on POST', () => singleDocTest('POST'));
 
