@@ -60,6 +60,10 @@ module.exports = {
         // and forbidden docs stubs must be added
         res.interceptResponse = _.partial(interceptResponse, req.body.docs);
         req.body.docs = filteredDocs;
+
+        // Tagged to easily trigger infodoc updating later
+        req.wasBulkDocs = true;
+
         next();
       })
       .catch(err => serverUtils.serverError(err, req, res));

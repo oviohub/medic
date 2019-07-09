@@ -1,4 +1,4 @@
-const db = require('../db'),
+  const db = require('../db'),
   logger = require('../lib/logger');
 
 const infoDocId = id => id + '-info';
@@ -47,16 +47,13 @@ const getInfoDoc = change => {
     .then(doc => updateInfoDoc(doc, rev));
 };
 
-const createInfoDoc = (docId, docRev) => {
-  // either it hasn't been even saved yet (ie comes from SMS synchronous transition processing)
-  // or it has been saved once and is being picked up by sentinel.
-  const isInitialVersion = !docRev || docRev.startsWith('1-');
-
+const createInfoDoc = (docId) => {
   return {
     _id: infoDocId(docId),
     type: 'info',
     doc_id: docId,
-    initial_replication_date: isInitialVersion ? new Date() : 'unknown',
+    initial_replication_date: 'unknown',
+    latest_replication_date: 'unknown'
   };
 };
 
@@ -75,7 +72,6 @@ const deleteInfoDoc = change => {
 };
 
 const updateInfoDoc = (doc, legacyRev) => {
-  doc.latest_replication_date = new Date();
   return db.sentinel.put(doc).then(() => {
     if (legacyRev) {
       // Removes legacy info doc
@@ -160,8 +156,6 @@ const bulkUpdate = infoDocs => {
       legacyDocs.push(Object.assign({ _deleted: true }, doc));
       delete doc._rev;
     }
-
-    doc.latest_replication_date = new Date();
   });
 
   return db.sentinel.bulkDocs(infoDocs).then(() => {
