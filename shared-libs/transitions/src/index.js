@@ -13,7 +13,7 @@ module.exports = (sourceDb, settings, translations, sourceLogger) => {
   config.init(settings, translations);
 
   const infodoc = require('@medic/infodoc');
-  infodoc.init(db.medic, db.sentinel);
+  infodoc.initLib(db.medic, db.sentinel);
 
   const transitions = require('./transitions');
   return {

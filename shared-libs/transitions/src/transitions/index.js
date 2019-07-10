@@ -8,7 +8,7 @@ const _ = require('underscore'),
   infodoc = require('@medic/infodoc'),
   uuid = require('uuid');
 
-infodoc.init(db.medic, db.sentinel);
+infodoc.initLib(db.medic, db.sentinel);
 /*
  * Add new transitions here to make them available for configuration and execution.
  * Transitions are executed in the order they appear in this array.

@@ -234,9 +234,7 @@ const maintainManyMetadata = ids => {
   });
 };
 
-
 module.exports = {
-  // TODO: this or wrapping?
   initLib: (medicDb, sentinelDb) => {
     db.medic = medicDb;
     db.sentinel = sentinelDb;
