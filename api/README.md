@@ -981,7 +981,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "doc_count": 5678,
+  "total_docs": 5678,
   "warn": false,
   "limit: 10000
 }
@@ -1008,7 +1008,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "doc_count": 10265,
+  "total_docs": 10265,
   "warn": true,
   "limit: 10000
 }
