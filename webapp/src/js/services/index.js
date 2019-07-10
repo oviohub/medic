@@ -99,6 +99,5 @@
   require('./xml-form');
   require('./xml-forms');
   require('./xml-forms-context-utils');
-  require('./xslt');
   require('./z-score');
 })();

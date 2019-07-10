@@ -27,7 +27,6 @@ angular.module('inboxServices').service('Enketo',
     SubmitFormBySms,
     TranslateFrom,
     UserContact,
-    XSLT,
     XmlForm,
     ZScore
   ) {
@@ -35,7 +34,7 @@ angular.module('inboxServices').service('Enketo',
     'ngInject';
 
     var objUrls = [];
-    var xmlCache = {};
+    // var xmlCache = {};
     var FORM_ATTACHMENT_NAME = 'xml';
 
     var currentForm;
@@ -63,6 +62,7 @@ angular.module('inboxServices').service('Enketo',
     };
     var inited = init();
 
+    // TODO move this in to API as well
     var replaceJavarosaMediaWithLoaders = function(id, form) {
       form.find('[data-media-src]').each(function() {
         var elem = $(this);
@@ -84,10 +84,10 @@ angular.module('inboxServices').service('Enketo',
       });
     };
 
-    var transformXml = function(xml) {
+    var transformXml = function(form) {
       return $q.all([
-        XSLT.transform('openrosa2html5form.xsl', xml),
-        XSLT.transform('openrosa2xmlmodel.xsl', xml)
+        getFormAttachment(form._id, 'form.html'),
+        getFormAttachment(form._id, 'model.xml')
       ])
       .then(function(results) {
         const $html = $(results[0].replace(/ src="jr:\/\//gi, ' data-media-src="'));
@@ -105,6 +105,7 @@ angular.module('inboxServices').service('Enketo',
       });
     };
 
+    // TODO see if we can get away from this
     var translateXml = function(text, language, title) {
       var xml = $.parseXML(text);
       var $xml = $(xml);
@@ -118,37 +119,38 @@ angular.module('inboxServices').service('Enketo',
       return xml;
     };
 
-    var getFormAttachment = function(id) {
-      return DB().getAttachment(id, FORM_ATTACHMENT_NAME)
-        .then(FileReader.utf8);
+    var getFormAttachment = function(id, name) {
+      return DB().getAttachment(id, name).then(FileReader.utf8);
     };
 
-    var getFormXml = function(form, language) {
-      return getFormAttachment(form._id).then(function(text) {
-        return translateXml(text, language, form.title);
-      });
-    };
+    // var getFormXml = function(form, language) {
+    //   return getFormAttachment(form._id).then(function(text) {
+    //     return translateXml(text, language, form.title);
+    //   });
+    // };
 
     var withForm = function(id, language) {
-      if (!xmlCache[id]) {
-        xmlCache[id] = {};
-      }
-      if (!xmlCache[id][language]) {
-        xmlCache[id][language] = DB()
-          .get(id)
-          .then(function(form) {
-            return getFormXml(form, language);
-          })
-          .then(transformXml);
-      }
-      return xmlCache[id][language].then(function(form) {
-        // clone form to avoid leaking of data between instances of a form
-        return {
-          html: form.html.clone(),
-          model: form.model,
-          hasContactSummary: form.hasContactSummary
-        };
-      });
+      // if (!xmlCache[id]) {
+      //   xmlCache[id] = {};
+      // }
+      // if (!xmlCache[id][language]) {
+      //   xmlCache[id][language] = DB()
+      //     .get(id)
+      //     // .then(function(form) {
+      //     //   return getFormXml(form, language);
+      //     // })
+      //     .then(transformXml);
+      // }
+      return DB().get(id)
+        .then(transformXml)
+        .then(function(form) {
+          // clone form to avoid leaking of data between instances of a form
+          return {
+            html: form.html.clone(),
+            model: form.model,
+            hasContactSummary: form.hasContactSummary
+          };
+        });
     };
 
     var handleKeypressOnInputField = function(e) {
@@ -583,8 +585,9 @@ angular.module('inboxServices').service('Enketo',
       objUrls.length = 0;
     };
 
+    // TODO remove
     this.clearXmlCache = function() {
-      xmlCache = {};
+      // xmlCache = {};
     };
   }
 );
