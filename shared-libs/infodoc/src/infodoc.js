@@ -1,0 +1,253 @@
+const db = {}; // to be filled in by the initLib function exported below
+
+const getInfoDocId = id => id + '-info';
+const getDocId = infoDocId => infoDocId.slice(0, -5);
+const blankInfoDoc = (docId, knownReplicatationDate) => {
+  return {
+    _id: getInfoDocId(docId),
+    type: 'info',
+    doc_id: docId,
+    initial_replication_date: knownReplicatationDate || 'unknown',
+    latest_replication_date: knownReplicatationDate || 'unknown',
+    transitions: {}
+  };
+};
+
+const findInfoDocs = (database, changes) => {
+  return database
+    .allDocs({ keys: changes.map(change => getInfoDocId(change.id)), include_docs: true })
+    .then(results => results.rows);
+};
+
+const getInfoDoc = change => {
+  const infoDocId = getInfoDocId(change.id);
+  return db.sentinel.get(infoDocId)
+    .catch(err => {
+      if (err.status !== 404) {
+        throw err;
+      }
+
+      return db.medic.get(infoDocId)
+        .catch(err => {
+          if (err.status !== 404) {
+            throw err;
+          }
+
+          return blankInfoDoc(change.id);
+        })
+        .then(infoDoc => {
+          if (infoDoc._rev) {
+            // Delete intentionally out of control flow for performance
+            db.medic.remove(infoDocId, infoDoc._rev);
+            delete infoDoc._rev;
+          }
+
+          return db.sentinel.put(infoDoc)
+            .then(result => {
+              infoDoc._rev = result.rev;
+              return infoDoc;
+            })
+            .catch(err => {
+              if (err.status !== 409) {
+                throw err;
+              }
+
+              // conflict, try the whole thing again from the top
+              return getInfoDoc(change);
+            });
+        });
+    });
+};
+
+const deleteInfoDoc = change => {
+  return db.sentinel
+    .get(getInfoDocId(change.id))
+    .then(doc => {
+      doc._deleted = true;
+      return db.sentinel.put(doc);
+    })
+    .catch(err => {
+      if (err.status !== 404) {
+        throw err;
+      }
+    });
+};
+
+const updateTransition = (change, transition, ok) => {
+  const info = change.info;
+  info.transitions = info.transitions || {};
+  info.transitions[transition] = {
+    last_rev: change.doc._rev,
+    seq: change.seq,
+    ok: ok,
+  };
+};
+
+const saveTransitions = change => {
+  return db.sentinel.get(getInfoDocId(change.id))
+    .then(doc => {
+      doc.transitions = change.info.transitions || {};
+      return db.sentinel.put(doc);
+    })
+    .catch(err => {
+      if (err.status !== 409) {
+        throw err;
+      }
+
+      return saveTransitions(change);
+    });
+};
+
+const bulkGet = changes => {
+  const infoDocs = [];
+
+  if (!changes || !changes.length) {
+    return Promise.resolve();
+  }
+
+  return findInfoDocs(db.sentinel, changes)
+    .then(result => {
+      const missing = [];
+      result.forEach(row => {
+        if (!row.doc) {
+          missing.push({ id: getDocId(row.key) });
+        } else {
+          infoDocs.push(row.doc);
+        }
+      });
+
+      if (!missing.length) {
+        return [];
+      }
+
+      return findInfoDocs(db.medic, missing);
+    })
+    .then(result => {
+      result.forEach(row => {
+        if (!row.doc) {
+          infoDocs.push(blankInfoDoc(getDocId(row.key)));
+        } else {
+          row.doc.legacy = true;
+          infoDocs.push(row.doc);
+        }
+      });
+
+      return infoDocs;
+    });
+};
+
+const bulkUpdate = infoDocs => {
+  const legacyDocs = [];
+
+  if (!infoDocs || !infoDocs.length) {
+    return Promise.resolve();
+  }
+
+  infoDocs.forEach(doc => {
+    if (doc.legacy) {
+      delete doc.legacy;
+      legacyDocs.push(Object.assign({ _deleted: true }, doc));
+      delete doc._rev;
+    }
+  });
+
+  return db.sentinel.bulkDocs(infoDocs).then(results => {
+    if (legacyDocs.length) {
+      // Delete intentionally out of control flow for performance
+      db.medic.bulkDocs(legacyDocs);
+    }
+
+    const conflictingInfoDocs = infoDocs
+      .filter((_, idx) => results[idx].error === 'conflict');
+
+    if (conflictingInfoDocs.length > 0) {
+      // Attempt an intelligent merge based on responsibilities
+      // This code's caller will be making changes to transition metadata, but will
+      // not be accurate when it comes to replication dates
+      // Contrariwise, what we're conflicting with will have the right
+      // _rev and replication dates, and maybe more?
+      return db.sentinel.allDocs({
+        keys: conflictingInfoDocs.map(d => d._id),
+        include_docs: true
+      }).then(results => {
+        const freshInfoDocs = results.rows.map(r => r.doc);
+
+        freshInfoDocs.forEach((freshInfoDoc, idx) => {
+          // We aren't attempting to merge this. Transitions, which *for now*
+          // do not run in parallel should correctly maintain this value
+          freshInfoDoc.transitions = conflictingInfoDocs[idx].transitions;
+        });
+
+        return bulkUpdate(freshInfoDocs);
+      });
+    }
+  });
+};
+
+const maintainOneMetadata = id => {
+  return db.sentinel.get(getInfoDocId(id))
+    .catch(err => {
+      if (err.status !== 404) {
+        throw err;
+      }
+
+      return blankInfoDoc(id, new Date());
+    })
+    .then(infoDoc => {
+      infoDoc.latest_replication_date = new Date();
+      return db.sentinel.put(infoDoc)
+        .catch(err => {
+          if (err.status === 409) {
+            return maintainOneMetadata(id);
+          }
+
+          throw err;
+        });
+    });
+};
+
+const maintainManyMetadata = ids => {
+  const infoDocIds = ids.map(getInfoDocId);
+
+  return db.sentinel.allDocs({
+    keys: infoDocIds,
+    include_docs: true
+  }).then(results => {
+    const updatedInfoDocs = results.rows.map(row => {
+      const infoDoc = row.doc || blankInfoDoc(getDocId(row.key), new Date());
+
+      infoDoc.latest_replication_date = new Date();
+
+      return infoDoc;
+    });
+
+    return db.sentinel.bulkDocs(updatedInfoDocs)
+      .then(bulkResults => {
+        const conflictingIds = bulkResults
+          .filter(r => r.error === 'conflict')
+          .map(r => getDocId(r.id));
+
+        if (conflictingIds.length > 0) {
+          return maintainManyMetadata(conflictingIds);
+        }
+      });
+  });
+};
+
+
+module.exports = {
+  // TODO: this or wrapping?
+  initLib: (medicDb, sentinelDb) => {
+    db.medic = medicDb;
+    db.sentinel = sentinelDb;
+  },
+  get: change => getInfoDoc(change),
+  delete: change => deleteInfoDoc(change),
+  updateTransition: (change, transition, ok) =>
+    updateTransition(change, transition, ok),
+  bulkGet: bulkGet,
+  bulkUpdate: bulkUpdate,
+  saveTransitions: saveTransitions,
+  recordDocumentWrite: maintainOneMetadata,
+  recordDocumentWrites: maintainManyMetadata
+};

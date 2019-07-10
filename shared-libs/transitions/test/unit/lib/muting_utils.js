@@ -4,7 +4,7 @@ const mutingUtils = require('../../../src/lib/muting_utils'),
       db = require('../../../src/db'),
       utils = require('../../../src/lib/utils'),
       moment = require('moment'),
-      infodoc = require('../../../src/lib/infodoc');
+      infodoc = require('@medic/infodoc');
 
 let clock;
 

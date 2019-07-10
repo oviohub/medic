@@ -12,6 +12,9 @@ module.exports = (sourceDb, settings, translations, sourceLogger) => {
   }
   config.init(settings, translations);
 
+  const infodoc = require('@medic/infodoc');
+  infodoc.init(db.medic, db.sentinel);
+
   const transitions = require('./transitions');
   return {
     loadTransitions: transitions.loadTransitions,
@@ -19,7 +22,7 @@ module.exports = (sourceDb, settings, translations, sourceLogger) => {
     processDocs: transitions.processDocs,
     messages: require('./lib/messages'),
     date: require('./date'),
-    infodoc: require('./lib/infodoc'),
+    infodoc: infodoc,
     dueTasks: require('./schedule/due_tasks')
   };
 };
