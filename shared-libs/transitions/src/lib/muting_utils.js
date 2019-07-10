@@ -2,7 +2,7 @@ const db = require('../db'),
       lineage = require('@medic/lineage')(Promise, db.medic),
       utils = require('./utils'),
       moment = require('moment'),
-      infodoc = require('./infodoc');
+      infodoc = require('@medic/infodoc');
 
 const BATCH_SIZE = 50;
 
