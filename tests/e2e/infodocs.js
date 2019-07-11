@@ -7,9 +7,8 @@ const utils = require('../utils');
 // 1) Sentinel will always write to the infodoc
 // 2) Sometimes the infodoc to be updated with new dates and sometimes not, depending on our action
 //
-// While we could have more complicated logic to determine correctly if sentinel
-// had processed the original document (like watching its seq log) that still doesn't
-// take care of the out of flow potential write to the infodoc from our api action.
+// While we *could* wait for sentinel that still wouldn't guarantee that #2 has run, so we might as
+// well just wait a bit and keep this style of test to the minimum
 const delayedRead = (infodocId) => {
   return new Promise((res, rej) => {
     setTimeout(() => {
@@ -28,6 +27,7 @@ describe('maintaining infodocs', () => {
     };
     const path = method === 'PUT' ? `/${doc._id}` : '/';
     let infoDoc;
+    let deleteRev;
 
     // First write...
     let infoWrite = delayedRead(doc._id + '-info');
@@ -73,6 +73,8 @@ describe('maintaining infodocs', () => {
       // ...should succeed and...
       assert.isTrue(result.ok);
 
+      deleteRev = result.rev;
+
       return infoWrite;
     }).then(result => {
       // ...leave the initial date the same while changing the latest date.
@@ -100,6 +102,29 @@ describe('maintaining infodocs', () => {
       // ...and the infodoc should remain the same.
       assert.equal(result.initial_replication_date, infoDoc.initial_replication_date);
       assert.equal(result.latest_replication_date, infoDoc.latest_replication_date);
+
+      // A delete...
+      doc._deleted = true;
+      doc._rev = deleteRev;
+
+      return utils.requestOnTestDb({
+        path: path,
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: doc
+      });
+    }).then(result => {
+      // ...should succeed...
+      assert.isTrue(result.ok);
+
+      // ..and the infodoc...
+      return delayedRead(doc._id + '-info')
+        .catch(err => err);
+    }).then(err => {
+      // ... should be deleted.
+      assert.equal(err.status, 404);
     });
   };
 
@@ -171,6 +196,9 @@ describe('maintaining infodocs', () => {
         // ...and the third to fail...
         assert.isNotOk(result[2].ok);
 
+        docs[0]._rev = result[0].rev;
+        docs[1]._rev = result[1].rev;
+
         return Promise.all(docs.map(d => delayedRead(d._id + '-info')));
       }).then(newInfoDocs => {
         // ...which means that the first two latest_replication_date values should change...
@@ -178,6 +206,29 @@ describe('maintaining infodocs', () => {
         assert.notEqual(newInfoDocs[1].latest_replication_date, infoDocs[1].latest_replication_date);
         // ..and the last should not.
         assert.equal(newInfoDocs[2].latest_replication_date, infoDocs[2].latest_replication_date);
+
+        docs.pop(); // (remove the failing one, we're done with it)
+
+        // When we delete a doc...
+        docs[1]._deleted = true;
+
+        return utils.requestOnTestDb({
+          path: '/_bulk_docs',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: {docs: docs}
+        });
+      }).then(result => {
+        // ...everything should work...
+        assert.isTrue(result[0].ok);
+        assert.isTrue(result[1].ok);
+
+        // ...and the second doc should not have a infodoc anymore
+        return delayedRead(docs[1]._id + '-info').catch(err => err);
+      }).then(err => {
+        assert.equal(err.status, 404);
       });
     });
   });
