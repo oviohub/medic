@@ -1,4 +1,6 @@
+const db = require('../db');
 const infodoc = require('@medic/infodoc');
+infodoc.initLib(db.medic, db.sentinel);
 
 module.exports = {
   mark: (req, res, next) => {
