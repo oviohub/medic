@@ -86,7 +86,7 @@ describe('muting', () => {
       .then(() => sentinelUtils.waitForSentinel(doc._id))
       .then(() => sentinelUtils.getInfoDoc(doc._id))
       .then(info => {
-        expect(Object.keys(info.transitions)).to.equal(0);
+        expect(Object.keys(info.transitions)).toEqual(0);
       });
   });
 
@@ -117,7 +117,7 @@ describe('muting', () => {
       .then(() => sentinelUtils.waitForSentinel(doc._id))
       .then(() => sentinelUtils.getInfoDoc(doc._id))
       .then(info => {
-        expect(Object.keys(info.transitions)).to.equal(0);
+        expect(Object.keys(info.transitions)).toEqual(0);
       });
   });
 
