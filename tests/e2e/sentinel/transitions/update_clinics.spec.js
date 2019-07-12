@@ -30,7 +30,7 @@ describe('update_clinics', () => {
       .then(() => sentinelUtils.waitForSentinel(doc._id))
       .then(() => sentinelUtils.getInfoDoc(doc._id))
       .then(info => {
-        expect(Object.keys(info.transitions)).toEqual(0);
+        expect(Object.keys(info.transitions).length).toEqual(0);
       })
       .then(() => utils.getDoc(doc._id))
       .then(updated => {
@@ -69,7 +69,7 @@ describe('update_clinics', () => {
       .then(() => sentinelUtils.waitForSentinel(doc1._id))
       .then(() => sentinelUtils.getInfoDoc(doc1._id))
       .then(info => {
-        expect(Object.keys(info.transitions)).toEqual(0);
+        expect(Object.keys(info.transitions).length).toEqual(0);
       })
       .then(() => utils.getDoc(doc1._id))
       .then(updated => {
@@ -79,7 +79,7 @@ describe('update_clinics', () => {
       .then(() => sentinelUtils.waitForSentinel(doc2._id))
       .then(() => sentinelUtils.getInfoDoc(doc2._id))
       .then(info => {
-        expect(Object.keys(info.transitions)).toEqual(0);
+        expect(Object.keys(info.transitions).length).toEqual(0);
       })
       .then(() => utils.getDoc(doc2._id))
       .then(updated => {
