@@ -24,7 +24,7 @@ describe('update_sent_by', () => {
       .then(() => sentinelUtils.waitForSentinel(doc._id))
       .then(() => sentinelUtils.getInfoDoc(doc._id))
       .then(info => {
-        expect(info.transitions).not.toBeDefined();
+        expect(info.transitions).to.deep.equal({});
       });
   });
 
