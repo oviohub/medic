@@ -17,7 +17,7 @@ const delayedRead = (infodocId) => {
   });
 };
 
-describe('maintaining infodocs', () => {
+xdescribe('maintaining infodocs', () => {
   afterEach(utils.afterEach);
 
   const singleDocTest = method => {
