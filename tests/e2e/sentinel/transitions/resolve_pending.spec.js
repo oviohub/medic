@@ -23,7 +23,7 @@ describe('resolve_pending', () => {
       .then(() => sentinelUtils.waitForSentinel(doc._id))
       .then(() => sentinelUtils.getInfoDoc(doc._id))
       .then(info => {
-        expect(info.transitions).to.deep.equal({});
+        expect(Object.keys(info.transitions)).to.equal(0);
       });
   });
 
@@ -41,7 +41,7 @@ describe('resolve_pending', () => {
       .then(() => sentinelUtils.waitForSentinel(doc._id))
       .then(() => sentinelUtils.getInfoDoc(doc._id))
       .then(info => {
-        expect(info.transitions).to.deep.equal({});
+        expect(Object.keys(info.transitions)).to.equal(0);
       });
   });
 
