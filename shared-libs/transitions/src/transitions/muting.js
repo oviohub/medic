@@ -38,7 +38,7 @@ const isRelevantReport = (doc, info = {}) =>
 // also the schedule associated with their registration should be muted
 const isRelevantContact = (doc, info = {}) =>
   Boolean(doc &&
-          !info._rev &&
+          (!info._rev || info._rev.startsWith('1-')) &&
           ['person', 'clinic', 'health_center', 'district_hospital'].includes(doc.type) &&
           !doc.muted &&
           mutingUtils.isMutedInLineage(doc));

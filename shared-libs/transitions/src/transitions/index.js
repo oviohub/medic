@@ -191,16 +191,16 @@ const canRun = ({ key, change, transition }) => {
   const info = change.info;
 
   const isRevSame = (doc, info) => {
-    if (info.transitions && info.transitions[key]) {
-      return parseInt(doc._rev) === parseInt(info.transitions[key].last_rev);
-    }
-    if (doc.transitions && doc.transitions[key]) {
-      return parseInt(doc._rev) === parseInt(doc.transitions[key].last_rev);
-    }
+    const transition = (info.transitions && info.transitions[key]) ||
+                       (doc.transitions && doc.transitions[key]) ||
+                       false;
+
+    const revSame = transition && parseInt(doc._rev) === parseInt(transition.last_rev);
+
     logger.debug(
-      `isRevSame tested true on transition ${key} for doc ${change.id} seq ${change.seq}`
+      `isRevSame tested ${revSame} on transition ${key} for doc ${change.id} seq ${change.seq}`
     );
-    return false;
+    return revSame;
   };
 
   /*
