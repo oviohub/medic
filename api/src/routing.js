@@ -446,8 +446,8 @@ app.post(
 app.post(
   routePrefix + '_bulk_docs(/*)?',
   authorization.onlineUserPassThrough, // online user requests pass through to the next route
-  // infodoc.mark('bulk'),
   jsonParser,
+  infodoc.mark('bulk'),
   bulkDocs.request,
   authorization.setAuthorized // adds the `authorized` flag to the `req` object, so it passes the firewall
 );
@@ -474,16 +474,16 @@ app.get(
 app.post(
   `/+${environment.db}/?`,
   authorization.onlineUserPassThrough, // online user requests pass through to the next route
-  // infodoc.mark('single'),
   jsonParser,
+  infodoc.mark('single'),
   dbDocHandler.request,
   authorization.setAuthorized // adds the `authorized` flag to the `req` object, so it passes the firewall
 );
 app.put(
   docPath,
   authorization.onlineUserPassThrough, // online user requests pass through to the next route,
-  // infodoc.mark('single'),
   jsonParser,
+  infodoc.mark('single'),
   dbDocHandler.request,
   authorization.setAuthorized // adds the `authorized` flag to the `req` object, so it passes the firewall
 );
