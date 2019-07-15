@@ -680,7 +680,7 @@ describe('muting', () => {
     };
 
     const person = {
-      _id: 'person2',
+      _id: 'person3',
       name: 'Person',
       type: 'person',
       parent: { _id: 'clinic', parent: { _id: 'health_center', parent: { _id: 'district_hospital' } } },
