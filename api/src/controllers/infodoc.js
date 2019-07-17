@@ -27,7 +27,7 @@ module.exports = {
     }
   },
   updateBulk: (req, body) => {
-    if (Array.isArray(req.triggerInfoDocUpdate)) {
+    if (Array.isArray(req.triggerInfoDocUpdate) && Array.isArray(body)) {
       const successfulWrites = req.triggerInfoDocUpdate
         .map(idx => body[idx])
         .filter(r => r.ok)
