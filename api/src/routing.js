@@ -682,18 +682,8 @@ proxyForAuth.on('proxyRes', (proxyRes, req, res) => {
   }
 });
 
-// Fire off metadata updates for sister info docs
-//
-// These intentionally happen out of band (we don't wait on the promise results) for performance
-// reasons.
-//
-// The infodoc service can handle conflicts and deal with them accordingly, as can the sentinel
-// service who also writes to infodocs.
-//
-// This is required anyway, because if you write docs without ids they need to be written to CouchDB
-// (triggering Sentinel) to generate their id, which we need to occur before we can create an
-// infodoc.
-proxyForAuth.on('proxyRes', infodoc.update);
-proxy.on('proxyRes', infodoc.update);
+// Updating bulk docs is dealt with in the interceptResponse function above
+proxyForAuth.on('proxyRes', infodoc.updateSingle);
+proxy.on('proxyRes', infodoc.updateSingle);
 
 module.exports = app;

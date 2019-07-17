@@ -16,26 +16,26 @@ module.exports = {
 
     next();
   },
-  update: (proxyRes, req) => {
-    if (req.triggerInfoDocUpdate) {
+  updateSingle: (proxyRes, req, res) => {
+    if (req.triggerInfoDocUpdate === true) {
       let body = Buffer.from('');
-      proxyRes.on('data', data => (body = Buffer.concat([body, data])));
-      proxyRes.on('end', () => {
+      res.on('data', data => (body = Buffer.concat([body, data])));
+      res.on('end', () => {
         body = JSON.parse(body.toString());
-        if (body.ok && body.id) {
-          infodoc.recordDocumentWrite(body.id);
-        } else if (Array.isArray(body)) {
-          // A write that worked and wasn't a delete
-          const successfulWrites = req.triggerInfoDocUpdate
-            .map(idx => body[idx])
-            .filter(r => r.ok)
-            .map(r => r.id);
-
-          if (successfulWrites.length > 0) {
-            infodoc.recordDocumentWrites(successfulWrites);
-          }
-        }
+        infodoc.recordDocumentWrite(body.id);
       });
+    }
+  },
+  updateBulk: (req, body) => {
+    if (Array.isArray(req.triggerInfoDocUpdate)) {
+      const successfulWrites = req.triggerInfoDocUpdate
+        .map(idx => body[idx])
+        .filter(r => r.ok)
+        .map(r => r.id);
+
+      if (successfulWrites.length > 0) {
+        infodoc.recordDocumentWrites(successfulWrites);
+      }
     }
   }
 };
