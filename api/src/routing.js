@@ -445,9 +445,9 @@ app.post(
 // this is an audited endpoint: online and filtered offline requests will pass through to the audit route
 app.post(
   routePrefix + '_bulk_docs(/*)?',
-  authorization.onlineUserPassThrough, // online user requests pass through to the next route
   jsonParser,
   infodoc.mark('bulk'),
+  authorization.onlineUserPassThrough, // online user requests pass through to the next route
   bulkDocs.request,
   authorization.setAuthorized // adds the `authorized` flag to the `req` object, so it passes the firewall
 );
@@ -473,17 +473,17 @@ app.get(
 );
 app.post(
   `/+${environment.db}/?`,
-  authorization.onlineUserPassThrough, // online user requests pass through to the next route
   jsonParser,
   infodoc.mark('single'),
+  authorization.onlineUserPassThrough, // online user requests pass through to the next route
   dbDocHandler.request,
   authorization.setAuthorized // adds the `authorized` flag to the `req` object, so it passes the firewall
 );
 app.put(
   docPath,
-  authorization.onlineUserPassThrough, // online user requests pass through to the next route,
   jsonParser,
   infodoc.mark('single'),
+  authorization.onlineUserPassThrough, // online user requests pass through to the next route,
   dbDocHandler.request,
   authorization.setAuthorized // adds the `authorized` flag to the `req` object, so it passes the firewall
 );
@@ -682,8 +682,7 @@ proxyForAuth.on('proxyRes', (proxyRes, req, res) => {
   }
 });
 
-// Updating bulk docs is dealt with in the interceptResponse function above
-proxyForAuth.on('proxyRes', infodoc.updateSingle);
-proxy.on('proxyRes', infodoc.updateSingle);
+proxyForAuth.on('proxyRes', infodoc.update);
+proxy.on('proxyRes', infodoc.update);
 
 module.exports = app;

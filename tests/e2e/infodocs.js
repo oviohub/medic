@@ -17,7 +17,7 @@ const delayedRead = (infodocId) => {
   });
 };
 
-xdescribe('maintaining infodocs', () => {
+ describe('maintaining infodocs', () => {
   afterEach(utils.afterEach);
 
   const singleDocTest = method => {
@@ -128,6 +128,9 @@ xdescribe('maintaining infodocs', () => {
     });
   };
 
+  // These tests are using an admin user
+  // For infodoc tests that check that restricted user security is followed
+  // correctly, see the tests for the action in question (e.g. bulk-docs.spec.js)
   describe('maintaining replication dates', () => {
     it('on PUT', () => singleDocTest('PUT'));
     it('on POST', () => singleDocTest('POST'));

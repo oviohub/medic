@@ -28,7 +28,6 @@ const invalidRequest = req => {
 const interceptResponse = (requestDocs, req, res, response) => {
   response = JSON.parse(response);
   const formattedResults = bulkDocs.formatResults(req.body.new_edits, requestDocs, req.body.docs, response);
-  require('./infodoc').updateBulk(req, formattedResults);
   res.json(formattedResults);
 };
 

@@ -4,38 +4,59 @@ infodoc.initLib(db.medic, db.sentinel);
 
 module.exports = {
   mark: type => (req, res, next) => {
-    if (type === 'single' && !req.body._deleted) {
+    if (type === 'bulk' || (type === 'single' && !req.body._deleted)) {
       req.triggerInfoDocUpdate = true;
-    } else if (type === 'bulk') {
-      // Array of indexes of writes that aren't deletes. We'll use this below in update
-      req.triggerInfoDocUpdate = req.body.docs
-        .map(({_deleted}, idx) => ({_deleted, idx}))
-        .filter(r => !r._deleted)
-        .map(({idx}) => idx);
     }
 
     next();
   },
-  updateSingle: (proxyRes, req, res) => {
-    if (req.triggerInfoDocUpdate === true) {
+  update: (proxyRes, req) => {
+    if (req.triggerInfoDocUpdate) {
       let body = Buffer.from('');
-      res.on('data', data => (body = Buffer.concat([body, data])));
-      res.on('end', () => {
+      proxyRes.on('data', data => (body = Buffer.concat([body, data])));
+      proxyRes.on('end', () => {
         body = JSON.parse(body.toString());
-        infodoc.recordDocumentWrite(body.id);
+
+        if (body.id && body.ok) {
+          // Single successful write
+          infodoc.recordDocumentWrite(body.id);
+        } else if (Array.isArray(body)) {
+          // Bulk docs write that may be have been completely or partially successful
+          const { writeAttempts, deleteAttempts } = req.body.docs.reduce(
+            (acc, r) => {
+              if (r._deleted) {
+                acc.deleteAttempts.push(r._id);
+              } else if (r._id) {
+                acc.writeAttempts.push(r._id);
+              }
+
+              return acc;
+            },
+            { writeAttempts: [], deleteAttempts: [] }
+          );
+
+          let successfulWrites;
+          if (req.body.new_edits === false) {
+            // This flag specifically set to false means that CouchDB will ignore conflicts and is
+            // effectively guaranteeing the writes that you passed in.
+            //
+            // NB: if someone is force-writing a document and not passing a specific _id there is
+            // literally no way to know what the resulting _id was, becuase CouchDB returns [] when
+            // you pass set new_edits to false. It's not clear this should ever happen.
+            successfulWrites = writeAttempts;
+          } else {
+            // Filter out writes that were not successful via the result object, and that were
+            // deletes via the request object
+            successfulWrites = body
+              .filter(r => r.ok && !deleteAttempts.includes(r.id))
+              .map(r => r.id);
+          }
+
+          if (successfulWrites && successfulWrites.length) {
+            infodoc.recordDocumentWrites(successfulWrites);
+          }
+        }
       });
     }
   },
-  updateBulk: (req, body) => {
-    if (Array.isArray(req.triggerInfoDocUpdate) && Array.isArray(body)) {
-      const successfulWrites = req.triggerInfoDocUpdate
-        .map(idx => body[idx])
-        .filter(r => r.ok)
-        .map(r => r.id);
-
-      if (successfulWrites.length > 0) {
-        infodoc.recordDocumentWrites(successfulWrites);
-      }
-    }
-  }
 };
