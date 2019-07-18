@@ -258,7 +258,7 @@ describe('bulk-docs handler', () => {
             });
             expect(result[6]).toEqual({ error: 'forbidden' });
 
-            ids = result.map(r => r.id);
+            ids = result.map(r => r.id).filter(id => id);
 
             return Promise.all(
               result.map(row => utils.getDoc(row.id).catch(err => err)),
@@ -276,7 +276,7 @@ describe('bulk-docs handler', () => {
 
             return sUtils.waitForSentinel(ids).then(() => sUtils.getInfoDocs(ids));
           }).then(result => {
-            expect(result.length).toEqual(8);
+            expect(result.length).toEqual(7);
             // Successful new write
             expect(result[0]._id).toEqual('new_allowed_contact_1-info');
 
@@ -292,11 +292,8 @@ describe('bulk-docs handler', () => {
             expect(result[5]._id).toEqual(existentDocsInfodocs[1]._id);
             expect(result[5].latest_replication_date).not.toEqual(existentDocsInfodocs[1].latest_replication_date);
 
-            // Denied new contact with no id
-            expect(result[6]).not.toBeDefined();
-
             // Successful completely new write
-            expect(result[7]).toBeDefined();
+            expect(result[6]).toBeDefined();
           });
     });
   });
