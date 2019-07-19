@@ -1,23 +1,10 @@
 const { assert } = require('chai');
 const utils = require('../utils');
+const sUtils = require('./sentinel/utils');
 
-// Waits for 2 seconds and then returns the most current version of the doc
-//
-// We have 1-2 writes that we're waiting for:
-// 1) Sentinel will always write to the infodoc
-// 2) Sometimes the infodoc to be updated with new dates and sometimes not, depending on our action
-//
-// While we *could* wait for sentinel that still wouldn't guarantee that #2 has run, so we might as
-// well just wait a bit and keep this style of test to the minimum
-const delayedRead = (infodocId) => {
-  return new Promise((res, rej) => {
-    setTimeout(() => {
-      utils.sentinelDb.get(infodocId).then(res).catch(rej);
-    }, 2000);
-  });
-};
+const delayedInfoDocOf = id => sUtils.waitForSentinel(id).then(() => sUtils.getInfoDoc(id));
 
- describe('maintaining infodocs', () => {
+describe('maintaining infodocs', () => {
   afterEach(utils.afterEach);
 
   const singleDocTest = method => {
@@ -30,7 +17,7 @@ const delayedRead = (infodocId) => {
     let deleteRev;
 
     // First write...
-    let infoWrite = delayedRead(doc._id + '-info');
+    let infoWrite = delayedInfoDocOf(doc._id);
     return utils.requestOnTestDb({
       path: path,
       method: method,
@@ -60,7 +47,7 @@ const delayedRead = (infodocId) => {
 
       // Second write with correct _rev...
 
-      infoWrite = delayedRead(doc._id + '-info');
+      infoWrite = delayedInfoDocOf(doc._id);
       return utils.requestOnTestDb({
         path: path,
         method: method,
@@ -84,7 +71,7 @@ const delayedRead = (infodocId) => {
       infoDoc = result;
 
       // Third write with the old _rev...
-      infoWrite = delayedRead(doc._id + '-info');
+      infoWrite = delayedInfoDocOf(doc._id);
       return utils.requestOnTestDb({
         path: path,
         method: method,
@@ -120,7 +107,7 @@ const delayedRead = (infodocId) => {
       assert.isTrue(result.ok);
 
       // ..and the infodoc...
-      return delayedRead(doc._id + '-info')
+      return delayedInfoDocOf(doc._id)
         .catch(err => err);
     }).then(err => {
       // ... should be deleted.
@@ -165,7 +152,7 @@ const delayedRead = (infodocId) => {
         docs[0]._rev = result[0].rev;
         docs[1]._rev = result[1].rev;
 
-        return Promise.all(docs.map(d => delayedRead(d._id + '-info')));
+        return Promise.all(docs.map(d => delayedInfoDocOf(d._id)));
       }).then(results => {
         infoDocs = results;
 
@@ -202,7 +189,7 @@ const delayedRead = (infodocId) => {
         docs[0]._rev = result[0].rev;
         docs[1]._rev = result[1].rev;
 
-        return Promise.all(docs.map(d => delayedRead(d._id + '-info')));
+        return Promise.all(docs.map(d => delayedInfoDocOf(d._id)));
       }).then(newInfoDocs => {
         // ...which means that the first two latest_replication_date values should change...
         assert.notEqual(newInfoDocs[0].latest_replication_date, infoDocs[0].latest_replication_date);
@@ -229,7 +216,7 @@ const delayedRead = (infodocId) => {
         assert.isTrue(result[1].ok);
 
         // ...and the second doc should not have a infodoc anymore
-        return delayedRead(docs[1]._id + '-info').catch(err => err);
+        return delayedInfoDocOf(docs[1]._id).catch(err => err);
       }).then(err => {
         assert.equal(err.status, 404);
       });

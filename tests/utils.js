@@ -14,11 +14,6 @@ const db = new PouchDB(
     constants.COUCH_PORT
   }/${constants.DB_NAME}`
 );
-const sentinelDb = new PouchDB(
-  `http://${auth.user}:${auth.pass}@${constants.COUCH_HOST}:${
-    constants.COUCH_PORT
-  }/${constants.DB_NAME}-sentinel`
-);
 
 let originalSettings;
 let e2eDebug;
@@ -326,7 +321,6 @@ const deleteUsers = usernames => {
 
 module.exports = {
   db: db,
-  sentinelDb: sentinelDb,
 
   request: request,
 

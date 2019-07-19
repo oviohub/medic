@@ -161,11 +161,10 @@ const bulkUpdate = infoDocs => {
       .filter((_, idx) => results[idx].error === 'conflict');
 
     if (conflictingInfoDocs.length > 0) {
-      // Attempt an intelligent merge based on responsibilities
-      // This code's caller will be making changes to transition metadata, but will
-      // not be accurate when it comes to replication dates
-      // Contrariwise, what we're conflicting with will have the right
-      // _rev and replication dates, and maybe more?
+      // Attempt an intelligent merge based on responsibilities For right now this is only the
+      // transitions block. If the caller of this code (sentinel) needs to maintain other
+      // information in the infodoc or others call this code we would need to be smarter about how
+      // we merge.
       return db.sentinel.allDocs({
         keys: conflictingInfoDocs.map(d => d._id),
         include_docs: true
@@ -173,8 +172,9 @@ const bulkUpdate = infoDocs => {
         const freshInfoDocs = results.rows.map(r => r.doc);
 
         freshInfoDocs.forEach((freshInfoDoc, idx) => {
-          // We aren't attempting to merge this. Transitions, which *for now*
-          // do not run in parallel should correctly maintain this value
+          // We aren't attempting to merge this: as of writing transitions do not run in parallel,
+          // and so there should be no way that the conflicted version of the document has any new
+          // information to add.
           freshInfoDoc.transitions = conflictingInfoDocs[idx].transitions;
         });
 

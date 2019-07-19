@@ -83,9 +83,6 @@ module.exports = {
           return res.json(result);
         }
 
-        // Tagged to easily trigger infodoc updating later
-        res.wasDocWrite = true;
-
         next();
       })
       .catch(err => serverUtils.serverError(err, req, res));
