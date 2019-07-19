@@ -2,7 +2,14 @@ const { assert } = require('chai');
 const utils = require('../utils');
 const sUtils = require('./sentinel/utils');
 
-const delayedInfoDocOf = id => sUtils.waitForSentinel(id).then(() => sUtils.getInfoDoc(id));
+//
+// NB: using sentinel processing to delay the reading of infodocs is not guaranteed to be successful
+// here, but as of writing seems stable. The API code (see the uses of the controller in
+// ./api/controllers/infodoc) happens asynchronously so it doesn't affect request performance. This
+// means there is no way to know it's run: it just so happens to run faster than sentinel takes to
+// process.
+//
+const delayedInfoDocsOf = ids => sUtils.waitForSentinel(ids).then(() => sUtils.getInfoDocs(ids));
 
 describe('maintaining infodocs', () => {
   afterEach(utils.afterEach);
@@ -17,7 +24,6 @@ describe('maintaining infodocs', () => {
     let deleteRev;
 
     // First write...
-    let infoWrite = delayedInfoDocOf(doc._id);
     return utils.requestOnTestDb({
       path: path,
       method: method,
@@ -31,8 +37,8 @@ describe('maintaining infodocs', () => {
       doc._rev = result.rev;
       doc.more = 'data';
 
-      return infoWrite;
-    }).then(result => {
+      return delayedInfoDocsOf(doc._id);
+    }).then(([result]) => {
       // ...create an info doc...
       assert.deepInclude(result, {
         _id: doc._id + '-info',
@@ -47,7 +53,6 @@ describe('maintaining infodocs', () => {
 
       // Second write with correct _rev...
 
-      infoWrite = delayedInfoDocOf(doc._id);
       return utils.requestOnTestDb({
         path: path,
         method: method,
@@ -62,8 +67,8 @@ describe('maintaining infodocs', () => {
 
       deleteRev = result.rev;
 
-      return infoWrite;
-    }).then(result => {
+      return delayedInfoDocsOf(doc._id);
+    }).then(([result]) => {
       // ...leave the initial date the same while changing the latest date.
       assert.equal(result.initial_replication_date, infoDoc.initial_replication_date);
       assert.notEqual(result.latest_replication_date, infoDoc.latest_replication_date);
@@ -71,7 +76,6 @@ describe('maintaining infodocs', () => {
       infoDoc = result;
 
       // Third write with the old _rev...
-      infoWrite = delayedInfoDocOf(doc._id);
       return utils.requestOnTestDb({
         path: path,
         method: method,
@@ -84,8 +88,8 @@ describe('maintaining infodocs', () => {
       // ...should fail with a conflict...
       assert.equal(result.statusCode, 409);
 
-      return infoWrite;
-    }).then(result => {
+      return delayedInfoDocsOf(doc._id);
+    }).then(([result]) => {
       // ...and the infodoc should remain the same.
       assert.equal(result.initial_replication_date, infoDoc.initial_replication_date);
       assert.equal(result.latest_replication_date, infoDoc.latest_replication_date);
@@ -107,11 +111,10 @@ describe('maintaining infodocs', () => {
       assert.isTrue(result.ok);
 
       // ..and the infodoc...
-      return delayedInfoDocOf(doc._id)
-        .catch(err => err);
-    }).then(err => {
+      return delayedInfoDocsOf(doc._id);
+    }).then(result => {
       // ... should be deleted.
-      assert.equal(err.status, 404);
+      assert.isNull(result[0]);
     });
   };
 
@@ -152,7 +155,7 @@ describe('maintaining infodocs', () => {
         docs[0]._rev = result[0].rev;
         docs[1]._rev = result[1].rev;
 
-        return Promise.all(docs.map(d => delayedInfoDocOf(d._id)));
+        return delayedInfoDocsOf(docs.map(d => d._id));
       }).then(results => {
         infoDocs = results;
 
@@ -189,7 +192,7 @@ describe('maintaining infodocs', () => {
         docs[0]._rev = result[0].rev;
         docs[1]._rev = result[1].rev;
 
-        return Promise.all(docs.map(d => delayedInfoDocOf(d._id)));
+        return delayedInfoDocsOf(docs.map(d => d._id));
       }).then(newInfoDocs => {
         // ...which means that the first two latest_replication_date values should change...
         assert.notEqual(newInfoDocs[0].latest_replication_date, infoDocs[0].latest_replication_date);
@@ -216,9 +219,9 @@ describe('maintaining infodocs', () => {
         assert.isTrue(result[1].ok);
 
         // ...and the second doc should not have a infodoc anymore
-        return delayedInfoDocOf(docs[1]._id).catch(err => err);
-      }).then(err => {
-        assert.equal(err.status, 404);
+        return delayedInfoDocsOf(docs[1]._id);
+      }).then(results => {
+        assert.isNull(results[0]);
       });
     });
   });
