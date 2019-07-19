@@ -184,21 +184,21 @@ const bulkUpdate = infoDocs => {
   });
 };
 
-const recordDocumentWrite = id => {
+const recordDocumentWrite = (id, date) => {
   return db.sentinel.get(getInfoDocId(id))
     .catch(err => {
       if (err.status !== 404) {
         throw err;
       }
 
-      return blankInfoDoc(id, new Date());
+      return blankInfoDoc(id, date);
     })
     .then(infoDoc => {
-      infoDoc.latest_replication_date = new Date();
+      infoDoc.latest_replication_date = date;
       return db.sentinel.put(infoDoc)
         .catch(err => {
           if (err.status === 409) {
-            return recordDocumentWrite(id);
+            return recordDocumentWrite(id, date);
           }
 
           throw err;
@@ -206,7 +206,7 @@ const recordDocumentWrite = id => {
     });
 };
 
-const recordDocumentWrites = ids => {
+const recordDocumentWrites = (ids, date) => {
   const infoDocIds = ids.map(getInfoDocId);
 
   return db.sentinel.allDocs({
@@ -214,9 +214,9 @@ const recordDocumentWrites = ids => {
     include_docs: true
   }).then(results => {
     const updatedInfoDocs = results.rows.map(row => {
-      const infoDoc = row.doc || blankInfoDoc(getDocId(row.key), new Date());
+      const infoDoc = row.doc || blankInfoDoc(getDocId(row.key), date);
 
-      infoDoc.latest_replication_date = new Date();
+      infoDoc.latest_replication_date = date;
 
       return infoDoc;
     });
@@ -228,7 +228,7 @@ const recordDocumentWrites = ids => {
           .map(r => getDocId(r.id));
 
         if (conflictingIds.length > 0) {
-          return recordDocumentWrites(conflictingIds);
+          return recordDocumentWrites(conflictingIds, date);
         }
       });
   });
@@ -250,6 +250,6 @@ module.exports = {
   // Used to update infodoc metadata that occurs at write time. A delete does not count as a write
   // in this instance, as deletes resolve as infodoc cleanups once sentinel gets to processing the
   // delete
-  recordDocumentWrite: recordDocumentWrite,
-  recordDocumentWrites: recordDocumentWrites
+  recordDocumentWrite: id => recordDocumentWrite(id, new Date()),
+  recordDocumentWrites: ids => recordDocumentWrites(ids, new Date())
 };
