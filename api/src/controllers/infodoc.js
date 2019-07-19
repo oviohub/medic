@@ -3,13 +3,11 @@ const infodoc = require('@medic/infodoc');
 infodoc.initLib(db.medic, db.sentinel);
 
 module.exports = {
-  mark: type => (req, res, next) => {
-    if (type === 'bulk' || (type === 'single' && !req.body._deleted)) {
-      req.triggerInfoDocUpdate = true;
-    }
-
+  mark: (req, res, next) => {
+    req.triggerInfoDocUpdate = true;
     next();
   },
+  // Requires that the request has been parsed into JSON via the jsonParser in the route
   update: (proxyRes, req) => {
     if (req.triggerInfoDocUpdate) {
       let body = Buffer.from('');
@@ -17,7 +15,7 @@ module.exports = {
       proxyRes.on('end', () => {
         body = JSON.parse(body.toString());
 
-        if (body.id && body.ok) {
+        if (body.id && body.ok && !req.body._deleted) {
           // Single successful write
           infodoc.recordDocumentWrite(body.id);
         } else if (Array.isArray(body)) {

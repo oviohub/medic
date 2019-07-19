@@ -184,7 +184,7 @@ const bulkUpdate = infoDocs => {
   });
 };
 
-const maintainOneMetadata = id => {
+const recordDocumentWrite = id => {
   return db.sentinel.get(getInfoDocId(id))
     .catch(err => {
       if (err.status !== 404) {
@@ -198,7 +198,7 @@ const maintainOneMetadata = id => {
       return db.sentinel.put(infoDoc)
         .catch(err => {
           if (err.status === 409) {
-            return maintainOneMetadata(id);
+            return recordDocumentWrite(id);
           }
 
           throw err;
@@ -206,7 +206,7 @@ const maintainOneMetadata = id => {
     });
 };
 
-const maintainManyMetadata = ids => {
+const recordDocumentWrites = ids => {
   const infoDocIds = ids.map(getInfoDocId);
 
   return db.sentinel.allDocs({
@@ -228,7 +228,7 @@ const maintainManyMetadata = ids => {
           .map(r => getDocId(r.id));
 
         if (conflictingIds.length > 0) {
-          return maintainManyMetadata(conflictingIds);
+          return recordDocumentWrites(conflictingIds);
         }
       });
   });
@@ -246,6 +246,10 @@ module.exports = {
   bulkGet: bulkGet,
   bulkUpdate: bulkUpdate,
   saveTransitions: saveTransitions,
-  recordDocumentWrite: maintainOneMetadata,
-  recordDocumentWrites: maintainManyMetadata
+
+  // Used to update infodoc metadata that occurs at write time. A delete does not count as a write
+  // in this instance, as deletes resolve as infodoc cleanups once sentinel gets to processing the
+  // delete
+  recordDocumentWrite: recordDocumentWrite,
+  recordDocumentWrites: recordDocumentWrites
 };

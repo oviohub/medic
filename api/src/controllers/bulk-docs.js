@@ -60,7 +60,6 @@ module.exports = {
         // and forbidden docs stubs must be added
         res.interceptResponse = _.partial(interceptResponse, req.body.docs);
         req.body.docs = filteredDocs;
-
         next();
       })
       .catch(err => serverUtils.serverError(err, req, res));
