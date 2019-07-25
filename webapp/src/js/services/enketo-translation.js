@@ -242,17 +242,29 @@ angular.module('inboxServices').service('EnketoTranslation',
       return root.xml();
     };
 
+    // DO NOT MERGE until this PR has landed: https://github.com/medic/medic/pull/5643/
+    const getHiddenFieldList = (nodes, prefix, current) => {
+      nodes.forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const path = prefix + node.nodeName;
+          const attr = node.attributes.getNamedItem('tag');
+          if (attr && attr.value === 'hidden') {
+            current.push(path);
+          } else {
+            getHiddenFieldList(node.childNodes, path + '.', current);
+          }
+        }
+      });
+    };
+
     self.getHiddenFieldList = function(model) {
       model = $.parseXML(model).firstChild;
-      return model && withElements(model.childNodes)
-        .filter(function(n) {
-          var attr = n.attributes.getNamedItem('tag');
-          return attr && attr.value === 'hidden';
-        })
-        .map(function(n) {
-          return n.nodeName;
-        })
-        .value();
+      if (!model) {
+        return;
+      }
+      const fields = [];
+      getHiddenFieldList(Array.from(model.childNodes), '', fields);
+      return fields;
     };
 
     var nodesToJs = function(data, repeatPaths, path) {
