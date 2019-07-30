@@ -259,14 +259,11 @@ describe('infodocs', () => {
         })
         .then(() => delayedInfoDocsOf(testDoc._id))
         .then(([infodoc]) => {
-          return utils.db.get(testDoc._id)
-            .then(doc => {
-              assert.isOk(infodoc.initial_replication_date, 'expected an initial_replication_date');
-              assert.isOk(infodoc.latest_replication_date, 'expected a latest_replication_date');
-              assert.deepEqual(infodoc.transitions, {
-                some: 'transition info'
-              });
-            });
+          assert.isOk(infodoc.initial_replication_date, 'expected an initial_replication_date');
+          assert.isOk(infodoc.latest_replication_date, 'expected a latest_replication_date');
+          assert.deepEqual(infodoc.transitions, {
+            some: 'transition info'
+          });
         });
     });
     it('finds and migrates transition data from the medic infodoc', () => {
