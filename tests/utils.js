@@ -14,6 +14,11 @@ const db = new PouchDB(
     constants.COUCH_PORT
   }/${constants.DB_NAME}`
 );
+const sentinel = new PouchDB(
+  `http://${auth.user}:${auth.pass}@${constants.COUCH_HOST}:${
+    constants.COUCH_PORT
+  }/${constants.DB_NAME}-sentinel`
+);
 
 let originalSettings;
 let e2eDebug;
@@ -43,6 +48,7 @@ const request = (options, { debug, noAuth, notJson } = {}) => {
     console.log('!!!!!!!REQUEST!!!!!!!');
   }
 
+  // TODO replace with request-promise-native and stop being a savage
   const req = http.request(options, res => {
     res.setEncoding('utf8');
     let body = '';
@@ -321,6 +327,7 @@ const deleteUsers = usernames => {
 
 module.exports = {
   db: db,
+  sentinelDb: sentinel,
 
   request: request,
 

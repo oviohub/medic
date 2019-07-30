@@ -31,6 +31,7 @@ class BaseConfig {
         // makes default jasmine reporter not display dots for every spec
         print: () => {}
       },
+      // TODO: Workout if I can kill things here
       beforeLaunch: function() {
         process.on('uncaughtException', function() {
           utils.reporter.jasmineDone();

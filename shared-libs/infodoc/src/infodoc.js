@@ -8,53 +8,156 @@ const blankInfoDoc = (docId, knownReplicatationDate) => {
     type: 'info',
     doc_id: docId,
     initial_replication_date: knownReplicatationDate || 'unknown',
-    latest_replication_date: knownReplicatationDate || 'unknown',
-    transitions: {}
+    latest_replication_date: knownReplicatationDate || 'unknown'
   };
 };
 
-const findInfoDocs = (database, changes) => {
-  return database
-    .allDocs({ keys: changes.map(change => getInfoDocId(change.id)), include_docs: true })
-    .then(results => results.rows);
+const findInfoDocs = (database, ids) => {
+  if (ids.length === 1) {
+    const id = ids[0];
+    return database.get(id)
+      .then(doc => {
+        return [{
+          key: doc._id,
+          doc: doc
+        }];
+      })
+      .catch(err => {
+        if (err.status !== 404) {
+          throw err;
+        }
+
+        return [{
+          key: id,
+          error: 'not_found'
+        }];
+      });
+  } else {
+    return database
+      .allDocs({ keys: ids, include_docs: true })
+      .then(results => results.rows);
+  }
 };
 
-const getInfoDoc = change => {
-  const infoDocId = getInfoDocId(change.id);
-  return db.sentinel.get(infoDocId)
-    .catch(err => {
-      if (err.status !== 404) {
-        throw err;
+//
+// Given a set of changes, find all the infoDocs or create them as necessary. Also takes care of
+// migrating legacy infodocs from the medic db, and legacy transition information from records.
+//
+// @param      {Array}  changes  an array of PouchDB changes objects
+// @return     {Array}  array of infodocs. NB: will not necessarily be in the same order as the
+//                      changes were passed in
+//
+const resolveInfoDocs = changes => {
+  const splitInfoDocRows = results => {
+    return results.reduce((acc, row) => {
+      if (!row.doc) {
+        acc.missing.push({_id: row.key});
+      } else if (!row.doc.transitions) {
+        // No transitions may mean that API created this infodoc on write but sentinel hasn't seen
+        // it yet. It's possible that there is a legacy infodoc with transition information.
+        acc.missingTransitions.push(row.doc);
+      } else {
+        acc.valid.push(row.doc);
       }
 
-      return db.medic.get(infoDocId)
-        .catch(err => {
-          if (err.status !== 404) {
-            throw err;
+      return acc;
+
+    }, {valid: [], missing: [], missingTransitions: []});
+  };
+
+  if (!changes || !changes.length) {
+    return Promise.resolve();
+  }
+
+  const infoDocIds = changes.map(change => getInfoDocId(change.id));
+
+  // First attempt, directly from sentinel where they should live
+  return findInfoDocs(db.sentinel, infoDocIds)
+    .then(results => {
+      const { valid, missing, missingTransitions: missingTransitionsSentinel } = splitInfoDocRows(results);
+
+      const lookForInMedic = missing.concat(missingTransitionsSentinel).map(r => r._id);
+
+      if (!lookForInMedic.length) {
+        return valid;
+      }
+
+      // the infodocs missing transitions are still valid. We distinguish between them so we can
+      // check for medic-db infodocs and if they exist transfer the transition data over
+      const infoDocs = valid.concat(missingTransitionsSentinel);
+
+      // Second attempt, look for old infodocs in the Medic DB.
+      return findInfoDocs(db.medic, lookForInMedic)
+        .then(results => {
+          const migratedInfoDocs = [];
+          const { valid, missing, missingTransitions: missingTransitionsMedic } = splitInfoDocRows(results);
+
+          // There is no interesting reason for a legacy medic infodoc to not have transitions, it's valid enough!
+          valid.push(...missingTransitionsMedic);
+
+          // Convert valid MedicDB infodocs into Sentinel ones
+          valid.forEach(medicInfoDoc => {
+            const sentinelInfoDoc = missingTransitionsSentinel.find(d => d._id === medicInfoDoc._id);
+            if (sentinelInfoDoc) {
+              // Augment the sentinel info doc with the existing transition information
+              sentinelInfoDoc.transitions = medicInfoDoc.transitions;
+              migratedInfoDocs.push(sentinelInfoDoc);
+            } else {
+              const infoDoc = Object.assign({}, medicInfoDoc);
+              delete infoDoc._rev;
+              infoDocs.push(infoDoc);
+              migratedInfoDocs.push(infoDoc);
+            }
+
+            medicInfoDoc._deleted = true;
+          });
+
+          // Intentionally not waiting on the promise for performance
+          db.medic.bulkDocs(valid);
+
+          // Infodocs that aren't in the Medic DB. This could mean there isn't one at all, or it
+          // could be that there was one without transition data back in sentinel
+          missing.forEach(row => {
+            const docId = getDocId(row._id);
+
+            const collectedInfoDoc = infoDocs.find(i => i._id === row._id);
+            const infoDoc = collectedInfoDoc || blankInfoDoc(docId);
+            const change = changes.find(change => change.id === docId);
+
+            infoDoc.transitions = (change.doc && change.doc.transitions) || {};
+
+            if (!collectedInfoDoc) {
+              infoDocs.push(infoDoc);
+            }
+
+            migratedInfoDocs.push(infoDoc);
+          });
+
+          // After all checks if there are still infodocs without transition information add a stub
+          infoDocs.forEach(infoDoc => {
+            if (!infoDoc.transitions) {
+              infoDoc.transitions = {};
+            }
+          });
+
+          // Store any infoDocs that have been migrated.
+          if (migratedInfoDocs.length) {
+            return db.sentinel.bulkDocs(migratedInfoDocs)
+              .then(results => {
+                results.forEach((r, idx) => {
+                  if (!r.ok) {
+                    throw new Error(`Failed to update a modified infodoc: ${JSON.stringify(r)}`);
+                  }
+
+                  // Anything in this is also in infoDocs, so it's modifying what we return to the caller
+                  migratedInfoDocs[idx]._rev = r.rev;
+                });
+
+                return infoDocs;
+              });
+          } else {
+            return infoDocs;
           }
-
-          return blankInfoDoc(change.id);
-        })
-        .then(infoDoc => {
-          if (infoDoc._rev) {
-            // Delete intentionally out of control flow for performance
-            db.medic.remove(infoDocId, infoDoc._rev);
-            delete infoDoc._rev;
-          }
-
-          return db.sentinel.put(infoDoc)
-            .then(result => {
-              infoDoc._rev = result.rev;
-              return infoDoc;
-            })
-            .catch(err => {
-              if (err.status !== 409) {
-                throw err;
-              }
-
-              // conflict, try the whole thing again from the top
-              return getInfoDoc(change);
-            });
         });
     });
 };
@@ -85,6 +188,13 @@ const updateTransition = (change, transition, ok) => {
 
 const saveTransitions = change => {
   return db.sentinel.get(getInfoDocId(change.id))
+    .catch(err => {
+      if (err.status !== 404) {
+        throw err;
+      }
+
+      return change.info;
+    })
     .then(doc => {
       doc.transitions = change.info.transitions || {};
       return db.sentinel.put(doc);
@@ -98,65 +208,12 @@ const saveTransitions = change => {
     });
 };
 
-const bulkGet = changes => {
-  const infoDocs = [];
-
-  if (!changes || !changes.length) {
-    return Promise.resolve();
-  }
-
-  return findInfoDocs(db.sentinel, changes)
-    .then(result => {
-      const missing = [];
-      result.forEach(row => {
-        if (!row.doc) {
-          missing.push({ id: getDocId(row.key) });
-        } else {
-          infoDocs.push(row.doc);
-        }
-      });
-
-      if (!missing.length) {
-        return [];
-      }
-
-      return findInfoDocs(db.medic, missing);
-    })
-    .then(result => {
-      result.forEach(row => {
-        if (!row.doc) {
-          infoDocs.push(blankInfoDoc(getDocId(row.key)));
-        } else {
-          row.doc.legacy = true;
-          infoDocs.push(row.doc);
-        }
-      });
-
-      return infoDocs;
-    });
-};
-
 const bulkUpdate = infoDocs => {
-  const legacyDocs = [];
-
   if (!infoDocs || !infoDocs.length) {
     return Promise.resolve();
   }
 
-  infoDocs.forEach(doc => {
-    if (doc.legacy) {
-      delete doc.legacy;
-      legacyDocs.push(Object.assign({ _deleted: true }, doc));
-      delete doc._rev;
-    }
-  });
-
   return db.sentinel.bulkDocs(infoDocs).then(results => {
-    if (legacyDocs.length) {
-      // Delete intentionally out of control flow for performance
-      db.medic.bulkDocs(legacyDocs);
-    }
-
     const conflictingInfoDocs = infoDocs
       .filter((_, idx) => results[idx].error === 'conflict');
 
@@ -176,6 +233,7 @@ const bulkUpdate = infoDocs => {
           // and so there should be no way that the conflicted version of the document has any new
           // information to add.
           freshInfoDoc.transitions = conflictingInfoDocs[idx].transitions;
+          freshInfoDoc.muting_history = conflictingInfoDocs[idx].muting_history;
         });
 
         return bulkUpdate(freshInfoDocs);
@@ -239,11 +297,11 @@ module.exports = {
     db.medic = medicDb;
     db.sentinel = sentinelDb;
   },
-  get: change => getInfoDoc(change),
+  get: change => resolveInfoDocs([change]).then(([firstResult]) => firstResult),
   delete: change => deleteInfoDoc(change),
   updateTransition: (change, transition, ok) =>
     updateTransition(change, transition, ok),
-  bulkGet: bulkGet,
+  bulkGet: resolveInfoDocs,
   bulkUpdate: bulkUpdate,
   saveTransitions: saveTransitions,
 

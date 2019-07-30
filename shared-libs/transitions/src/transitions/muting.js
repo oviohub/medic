@@ -36,12 +36,11 @@ const isRelevantReport = (doc, info = {}) =>
 
 // when new contacts are added that have muted parents, they should be set have muted state as well
 // also the schedule associated with their registration should be muted
-const isRelevantContact = (doc, info = {}) =>
+const isRelevantContact = doc =>
   Boolean(doc &&
-          (!info._rev || info._rev.startsWith('1-')) &&
           ['person', 'clinic', 'health_center', 'district_hospital'].includes(doc.type) &&
           !doc.muted &&
-          mutingUtils.isMutedInLineage(doc));
+          mutingUtils.isMutedInLineage(doc, doc.reported_date));
 
 module.exports = {
   init: () => {

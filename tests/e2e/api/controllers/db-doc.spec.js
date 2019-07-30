@@ -622,11 +622,11 @@ describe('db-doc handler', () => {
 
           return sUtils.waitForSentinel(ids).then(() => sUtils.getInfoDocs(ids));
         }).then(([a1, a2, d1, d2, n1, n2]) => {
-          expect(a1._rev.substring(0, 2)).toEqual('2-');
-          expect(a2._rev.substring(0, 2)).toEqual('1-');
-          expect(d1._rev.substring(0, 2)).toEqual('1-');
-          expect(d2._rev.substring(0, 2)).toEqual('1-');
-          expect(n1._rev.substring(0, 2)).toEqual('1-');
+          expect(a1._rev.substring(0, 2)).toEqual('3-');
+          expect(a2._rev.substring(0, 2)).toEqual('2-');
+          expect(d1._rev.substring(0, 2)).toEqual('2-');
+          expect(d2._rev.substring(0, 2)).toEqual('2-');
+          expect(n1._rev.substring(0, 2)).toEqual('2-');
           expect(n2).not.toBeDefined();
         });
     });
