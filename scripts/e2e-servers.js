@@ -94,6 +94,12 @@ app.post('/:server/:action', (req, res) => {
 
   return Promise.all(promises).then(res.status(200).end());
 });
+app.post('/die', (req, res) => {
+  console.log('Killing API / Sentinel service port');
+  Object.values(processes).forEach(p => p.kill());
+  res.status(200).end();
+  process.exit(0);
+});
 
 const port = 31337;
 

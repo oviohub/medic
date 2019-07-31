@@ -1,4 +1,5 @@
 const fs = require('fs');
+const request = require('request-promise-native');
 const utils = require('./utils');
 const constants = require('./constants');
 const auth = require('./auth')();
@@ -11,6 +12,7 @@ class BaseConfig {
     if (headless) {
       chromeArgs.push('--headless', '--disable-gpu');
     }
+    // https://github.com/angular/protractor/blob/master/lib/config.ts
     this.config = {
       seleniumAddress: 'http://localhost:4444/wd/hub',
 
@@ -31,7 +33,6 @@ class BaseConfig {
         // makes default jasmine reporter not display dots for every spec
         print: () => {}
       },
-      // TODO: Workout if I can kill things here
       beforeLaunch: function() {
         process.on('uncaughtException', function() {
           utils.reporter.jasmineDone();
@@ -43,7 +44,8 @@ class BaseConfig {
       },
       afterLaunch: function(exitCode) {
         return new Promise(function(resolve) {
-          utils.reporter.afterLaunch(resolve.bind(this, exitCode));
+          return request.post('http://localhost:31337/die')
+            .then(() => utils.reporter.afterLaunch(resolve.bind(this, exitCode)));
         });
       },
       onPrepare: () => {

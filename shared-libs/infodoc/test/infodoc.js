@@ -63,16 +63,17 @@ describe('infodoc', () => {
         }
       };
       const sentinelGet = sinon.stub(db.sentinel, 'get').rejects({status: 404});
-      const sentinelPut = sinon.stub(db.sentinel, 'put').resolves({rev: '1-cba'});
       const medicGet = sinon.stub(db.medic, 'get').resolves(Object.assign({}, infodoc));
-      const medicRemove = sinon.stub(db.medic, 'remove').resolves();
+      const medicRemove = sinon.stub(db.medic, 'bulkDocs').resolves();
+      const sentinelStore = sinon.stub(db.sentinel, 'bulkDocs').resolves([{ok: true, rev: '1-cba'}]);
       return lib.get(change)
         .then(result => {
           assert.equal(sentinelGet.callCount, 1);
           assert.equal(medicGet.callCount, 1);
-          assert.equal(sentinelPut.callCount, 1);
+          assert.equal(sentinelStore.callCount, 1);
           assert.equal(medicRemove.callCount, 1);
-          assert.deepEqual(medicRemove.args[0], ['test-info', '1-abc']); // and deleting the medic version
+          assert.equal(medicRemove.args[0][0][0]._id, 'test-info'); // and deleting the medic version
+          assert.equal(medicRemove.args[0][0][0]._deleted, true);
           infodoc._rev = '1-cba';
           assert.deepEqual(result, infodoc);
         });
@@ -84,13 +85,13 @@ describe('infodoc', () => {
       };
       const sentinelGet = sinon.stub(db.sentinel, 'get').rejects({status: 404});
       const medicGet = sinon.stub(db.medic, 'get').rejects({status: 404});
-      const sentinelPut = sinon.stub(db.sentinel, 'put').resolves({rev: '1-cba'});
+      const sentinelStore = sinon.stub(db.sentinel, 'bulkDocs').resolves([{ok: true, rev: '1-cba'}]);
 
       return lib.get(change)
         .then(result => {
           assert.equal(sentinelGet.callCount, 1);
           assert.equal(medicGet.callCount, 1);
-          assert.equal(sentinelPut.callCount, 1);
+          assert.equal(sentinelStore.callCount, 1);
 
           assert.deepEqual(result, {
             _id: 'test-info',
@@ -114,28 +115,28 @@ describe('infodoc', () => {
         type: 'info',
         doc_id: 'test',
         initial_replication_date: new Date(),
-        latest_replication_date: new Date(),
-        transitions: {}
+        latest_replication_date: new Date()
       };
+      const expected = Object.assign({}, infodoc);
+      expected._rev = '2-abc';
+      expected.transitions = {};
 
       const sentinelGet = sinon.stub(db.sentinel, 'get');
+      const medicGet = sinon.stub(db.medic, 'get');
+      const sentinelStore = sinon.stub(db.sentinel, 'bulkDocs');
       sentinelGet.onFirstCall().rejects({status: 404});
-      sentinelGet.onSecondCall().resolves(Object.assign({}, infodoc));
-      const medicGet = sinon.stub(db.medic, 'get').rejects({status: 404});
-      const sentinelPut = sinon.stub(db.sentinel, 'put');
-      sentinelPut.onFirstCall().rejects({status: 409});
-      // We should never actully call this second put, but this is what would happen if we did.
-      // Since when we try to write the doc we 409 we can then restart the process and get the
-      // now existing doc: no new doc needed so no writing needed.
-      sentinelPut.onSecondCall().resolves({rev: '2-cba'});
+      medicGet.rejects({status: 404});
+      sentinelStore.onFirstCall().resolves([{error: 'conflict'}]);
+      sentinelGet.onSecondCall().resolves(infodoc);
+      sentinelStore.onSecondCall().resolves([{ok: true, rev: '2-abc'}]);
 
       return lib.get(change)
         .then(result => {
           assert.equal(sentinelGet.callCount, 2); // 404, then now-existing doc
           assert.equal(medicGet.callCount, 1); // after the the first 404, not needed again
-          assert.equal(sentinelPut.callCount, 1); // 409, then not called again
+          assert.equal(sentinelStore.callCount, 2); // 409, then worked
 
-          assert.deepEqual(result, infodoc);
+          assert.deepEqual(result, expected);
         });
     });
   });
@@ -185,7 +186,7 @@ describe('infodoc', () => {
 
     it('should return infodocs when all are found in sentinel db', () => {
       const changes = [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
-            infoDocs = [{ _id: 'a-info' }, { _id: 'b-info' }, { _id: 'c-info' }];
+            infoDocs = [{ _id: 'a-info', transitions: {} }, { _id: 'b-info', transitions: {} }, { _id: 'c-info', transitions: {} }];
 
       sinon.stub(db.sentinel, 'allDocs')
         .resolves({ rows: infoDocs.map(doc => ({ key: doc._id, doc }))});
@@ -193,9 +194,9 @@ describe('infodoc', () => {
 
       return lib.bulkGet(changes).then(result => {
         assert.deepEqual(result, [
-          { _id: 'a-info' },
-          { _id: 'b-info' },
-          { _id: 'c-info' }
+          { _id: 'a-info', transitions: {} },
+          { _id: 'b-info', transitions: {} },
+          { _id: 'c-info', transitions: {} }
         ]);
 
         assert.equal(db.sentinel.allDocs.callCount, 1);
@@ -212,12 +213,15 @@ describe('infodoc', () => {
         .resolves({ rows: infoDocs.map(doc => ({ key: doc._id, error: 'not_found' }))});
       sinon.stub(db.medic, 'allDocs')
         .resolves({ rows: infoDocs.map(doc => ({ key: doc._id, doc }))});
+      sinon.stub(db.medic, 'bulkDocs')
+        .resolves();
+
 
       return lib.bulkGet(changes).then(result => {
         assert.deepEqual(result, [
-          { _id: 'a-info', _rev: 'a-r', legacy: true },
-          { _id: 'b-info', _rev: 'b-r', legacy: true },
-          { _id: 'c-info', _rev: 'c-r', legacy: true }
+          { _id: 'a-info', transitions: {} },
+          { _id: 'b-info', transitions: {} },
+          { _id: 'c-info', transitions: {} }
         ]);
 
         assert.equal(db.sentinel.allDocs.callCount, 1);
@@ -254,10 +258,10 @@ describe('infodoc', () => {
 
       sinon.stub(db.sentinel, 'allDocs')
         .resolves({ rows: [
-            { key: 'a-info', id: 'a-info', doc: { _id: 'a-info', _rev: 'a-r', doc_id: 'a' } },
+            { key: 'a-info', id: 'a-info', doc: { _id: 'a-info', _rev: 'a-r', doc_id: 'a', transitions: {} } },
             { key: 'b-info', error: 'not_found' },
             { key: 'c-info', error: 'deleted' },
-            { key: 'd-info', id: 'd-info', doc: { _id: 'd-info', _rev: 'd-r', doc_id: 'd' } },
+            { key: 'd-info', id: 'd-info', doc: { _id: 'd-info', _rev: 'd-r', doc_id: 'd', transitions: {} } },
             { key: 'e-info', error: 'deleted' },
             { key: 'f-info', error: 'something' },
           ]});
@@ -268,15 +272,16 @@ describe('infodoc', () => {
             { key: 'e-info', error: 'some error' },
             { key: 'f-info', id: 'f-info', doc: { _id: 'f-info', _rev: 'f-r', doc_id: 'f' } },
           ]});
+      sinon.stub(db.medic, 'bulkDocs').resolves();
 
       return lib.bulkGet(changes).then(result => {
         assert.deepEqual(result, [
-          { _id: 'a-info', _rev: 'a-r', doc_id: 'a' },
-          { _id: 'd-info', _rev: 'd-r', doc_id: 'd' },
-          { _id: 'b-info', _rev: 'b-r', doc_id: 'b', legacy: true },
+          { _id: 'a-info', _rev: 'a-r', doc_id: 'a', transitions: {}},
+          { _id: 'd-info', _rev: 'd-r', doc_id: 'd', transitions: {}},
+          { _id: 'b-info', doc_id: 'b', transitions: {}},
+          { _id: 'f-info', doc_id: 'f', transitions: {} },
           { _id: 'c-info', doc_id: 'c', initial_replication_date: 'unknown', latest_replication_date: 'unknown', type: 'info', transitions: {} },
           { _id: 'e-info', doc_id: 'e', initial_replication_date: 'unknown', latest_replication_date: 'unknown', type: 'info', transitions: {} },
-          { _id: 'f-info', _rev: 'f-r', doc_id: 'f', legacy: true },
         ]);
 
         assert.equal(db.sentinel.allDocs.callCount, 1);
@@ -290,25 +295,6 @@ describe('infodoc', () => {
           [{ keys: ['b-info', 'c-info', 'e-info', 'f-info'], include_docs: true }]
         );
       });
-    });
-
-    it('should throw sentinel all docs errors', () => {
-      sinon.stub(db.sentinel, 'allDocs').rejects({ some: 'error' });
-
-      return lib
-        .bulkGet([{ id: 'a' }])
-        .then(() => assert.fail())
-        .catch(err => assert.deepEqual(err, { some: 'error' }));
-    });
-
-    it('should throw medic all docs errors', () => {
-      sinon.stub(db.sentinel, 'allDocs').resolves({ rows: [{ key: 'a', error: true }] });
-      sinon.stub(db.medic, 'allDocs').rejects({ some: 'error' });
-
-      return lib
-        .bulkGet([{ id: 'a' }])
-        .then(() => assert.fail())
-        .catch(err => assert.deepEqual(err, { some: 'error' }));
     });
   });
 
@@ -334,51 +320,22 @@ describe('infodoc', () => {
     });
 
     it('should save all docs when none are legacy', () => {
-      sinon.stub(db.sentinel, 'bulkDocs').resolves([{}, {}, {}, {}]);
-      sinon.stub(db.medic, 'bulkDocs');
-
       const infoDocs = [ { _id: 'a-info' }, { _id: 'b-info' }, { _id: 'c-info' }, { _id: 'd-info' } ];
 
+      sinon.stub(db.sentinel, 'bulkDocs').resolves(infoDocs.map(() => ({ok: true, rev: '1-abc'})));
+      sinon.stub(db.medic, 'bulkDocs');
+
       return lib.bulkUpdate(infoDocs).then(() => {
         assert.equal(db.sentinel.bulkDocs.callCount, 1);
         assert.deepEqual(db.sentinel.bulkDocs.args[0], [[
-          { _id: 'a-info' },
-          { _id: 'b-info' },
-          { _id: 'c-info' },
-          { _id: 'd-info' }
+          // We aren't *really* passing _rev values to bulkDocs: we are returning these values from
+          // bulkDocs (see above) and then assigning them to the same reference
+          { _id: 'a-info', _rev: '1-abc'},
+          { _id: 'b-info', _rev: '1-abc'},
+          { _id: 'c-info', _rev: '1-abc'},
+          { _id: 'd-info', _rev: '1-abc'}
         ]]);
         assert.equal(db.medic.bulkDocs.callCount, 0);
-      });
-    });
-
-    it('should delete legacy docs after saving', () => {
-      sinon.stub(db.sentinel, 'bulkDocs').resolves([{}, {}, {}, {}, {}]);
-      sinon.stub(db.medic, 'bulkDocs').resolves();
-
-      const infoDocs = [
-        { _id: 'a-info', type: 'info', _rev: 'a-rev', legacy: true },
-        { _id: 'b-info', type: 'info', _rev: 'b-rev', legacy: true },
-        { _id: 'c-info', type: 'info', _rev: 'c-rev', legacy: true },
-        { _id: 'd-info', type: 'info', _rev: 'd-rev' },
-        { _id: 'e-info', type: 'info', _rev: 'e-rev' }
-      ];
-
-      return lib.bulkUpdate(infoDocs).then(() => {
-        assert.equal(db.sentinel.bulkDocs.callCount, 1);
-        assert.deepEqual(db.sentinel.bulkDocs.args[0], [[
-          { _id: 'a-info', type: 'info' },
-          { _id: 'b-info', type: 'info' },
-          { _id: 'c-info', type: 'info' },
-          { _id: 'd-info', type: 'info', _rev: 'd-rev' },
-          { _id: 'e-info', type: 'info', _rev: 'e-rev' }
-        ]]);
-
-        assert.equal(db.medic.bulkDocs.callCount, 1);
-        assert.deepEqual(db.medic.bulkDocs.args[0], [[
-          { _id: 'a-info', type: 'info', _rev: 'a-rev', _deleted: true },
-          { _id: 'b-info', type: 'info', _rev: 'b-rev', _deleted: true },
-          { _id: 'c-info', type: 'info', _rev: 'c-rev', _deleted: true },
-        ]]);
       });
     });
 
@@ -400,7 +357,7 @@ describe('infodoc', () => {
       ];
 
       const sentinelBulkDocs = sinon.stub(db.sentinel, 'bulkDocs');
-      const sentinelAllDocs = sinon.stub(db.sentinel, 'allDocs');
+      const sentinelGet = sinon.stub(db.sentinel, 'get');
       sentinelBulkDocs.onFirstCall().resolves([
         {
           ok: true,
@@ -413,19 +370,15 @@ describe('infodoc', () => {
           reason: 'Document update conflict.'
         }
       ]);
-      sentinelAllDocs.resolves({rows: [
-        {
-          doc: {
-            _id: 'test2-info',
-            extra: 'data',
-            initial_replication_date: new Date(),
-            latest_replication_date: new Date(),
-            transitions: {
-              'old': 'transition data'
-            }
-          }
+      sentinelGet.resolves({
+        _id: 'test2-info',
+        extra: 'data',
+        initial_replication_date: new Date(),
+        latest_replication_date: new Date(),
+        transitions: {
+          'old': 'transition data'
         }
-      ]});
+      });
       sentinelBulkDocs.onSecondCall().resolves([
         {
           ok: true,
@@ -437,8 +390,8 @@ describe('infodoc', () => {
       return lib.bulkUpdate(initialInfoDocs)
         .then(() => {
           assert.equal(sentinelBulkDocs.callCount, 2);
-          assert.equal(sentinelAllDocs.callCount, 1);
-          assert.deepEqual(sentinelAllDocs.args[0][0].keys, ['test2-info']);
+          assert.equal(sentinelGet.callCount, 1);
+          assert.equal(sentinelGet.args[0], 'test2-info');
           const conflictWrite = sentinelBulkDocs.args[1][0][0];
           assert.isOk(conflictWrite.initial_replication_date instanceof Date);
           assert.isOk(conflictWrite.latest_replication_date instanceof Date);

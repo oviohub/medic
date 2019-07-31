@@ -2,8 +2,6 @@ const { assert } = require('chai');
 const utils = require('../utils');
 const sUtils = require('./sentinel/utils');
 
-
-
 //
 // NB: using sentinel processing to delay the reading of infodocs is not guaranteed to be successful
 // here, but as of writing seems stable. The API code (see the uses of the controller in
@@ -239,16 +237,16 @@ describe('infodocs', () => {
       };
 
       // Prepare an existing document
-      return stopSentinel()
+      return utils.stopSentinel()
         .then(() => utils.db.post(testDoc))
         .then(({id, rev}) => {
           testDoc._id = id;
           testDoc._rev = rev;
 
           // Skip the preceeding write in sentinel
-          return setProcessedSeqToNow();
+          return utils.setProcessedSeqToNow();
         })
-        .then(startSentinel)
+        .then(utils.startSentinel)
         .then(() => {
           // Now update the document via api and with sentinel ready to roll
 
@@ -278,7 +276,7 @@ describe('infodocs', () => {
       };
 
       // Prepare an existing document
-      return stopSentinel()
+      return utils.stopSentinel()
         .then(() => utils.db.post(testDoc))
         .then(({id, rev}) => {
           testDoc._id = id;
@@ -289,8 +287,8 @@ describe('infodocs', () => {
           return utils.db.put(legacyInfodoc);
         })
         // Skip the preceeding write in sentinel
-        .then(() => setProcessedSeqToNow())
-        .then(startSentinel)
+        .then(() => utils.setProcessedSeqToNow())
+        .then(utils.startSentinel)
         .then(() => {
           // Now update the document via api and with sentinel ready to roll
 
@@ -318,18 +316,3 @@ describe('infodocs', () => {
     });
   });
 });
-
-
-// TODO: move this into the utils module
-const request = require('request-promise-native');
-const stopSentinel = () => request.post('http://localhost:31337/sentinel/stop');
-const startSentinel = () => request.post('http://localhost:31337/sentinel/start');
-const setProcessedSeqToNow = () => {
-  return Promise.all([
-    utils.sentinelDb.get('_local/sentinel-meta-data'),
-    utils.db.info()
-  ]).then(([sentinelMetadata, {update_seq: updateSeq}]) => {
-    sentinelMetadata.processed_seq = updateSeq;
-    return utils.sentinelDb.put(sentinelMetadata);
-  });
-};

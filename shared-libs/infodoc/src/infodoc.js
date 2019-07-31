@@ -47,7 +47,7 @@ const findInfoDocs = (database, ids) => {
 // @return     {Array}  array of infodocs. NB: will not necessarily be in the same order as the
 //                      changes were passed in
 //
-const resolveInfoDocs = changes => {
+const resolveInfoDocs = (changes, writeDirtyInfoDocs) => {
   const splitInfoDocRows = results => {
     return results.reduce((acc, row) => {
       if (!row.doc) {
@@ -113,7 +113,9 @@ const resolveInfoDocs = changes => {
           });
 
           // Intentionally not waiting on the promise for performance
-          db.medic.bulkDocs(valid);
+          if (valid.length) {
+            db.medic.bulkDocs(valid);
+          }
 
           // Infodocs that aren't in the Medic DB. This could mean there isn't one at all, or it
           // could be that there was one without transition data back in sentinel
@@ -141,20 +143,8 @@ const resolveInfoDocs = changes => {
           });
 
           // Store any infoDocs that have been migrated.
-          if (migratedInfoDocs.length) {
-            return db.sentinel.bulkDocs(migratedInfoDocs)
-              .then(results => {
-                results.forEach((r, idx) => {
-                  if (!r.ok) {
-                    throw new Error(`Failed to update a modified infodoc: ${JSON.stringify(r)}`);
-                  }
-
-                  // Anything in this is also in infoDocs, so it's modifying what we return to the caller
-                  migratedInfoDocs[idx]._rev = r.rev;
-                });
-
-                return infoDocs;
-              });
+          if (writeDirtyInfoDocs && migratedInfoDocs.length) {
+            return bulkUpdate(migratedInfoDocs).then(() => infoDocs);
           } else {
             return infoDocs;
           }
@@ -214,30 +204,28 @@ const bulkUpdate = infoDocs => {
   }
 
   return db.sentinel.bulkDocs(infoDocs).then(results => {
-    const conflictingInfoDocs = infoDocs
-      .filter((_, idx) => results[idx].error === 'conflict');
+    const conflictingInfoDocs = [];
+    results.forEach((result, idx) => {
+      if(result.error === 'conflict') {
+        conflictingInfoDocs.push(infoDocs[idx]);
+      } else {
+        infoDocs[idx]._rev = result.rev;
+      }
+    });
 
     if (conflictingInfoDocs.length > 0) {
-      // Attempt an intelligent merge based on responsibilities For right now this is only the
-      // transitions block. If the caller of this code (sentinel) needs to maintain other
-      // information in the infodoc or others call this code we would need to be smarter about how
-      // we merge.
-      return db.sentinel.allDocs({
-        keys: conflictingInfoDocs.map(d => d._id),
-        include_docs: true
-      }).then(results => {
-        const freshInfoDocs = results.rows.map(r => r.doc);
+      // Attempt an intelligent merge based on responsibilities: callers of this function own
+      // everything *except* replication date metadata, which is managed by API on write (who calls
+      // recordDocumentWrite[s])
+      return findInfoDocs(db.sentinel, conflictingInfoDocs.map(d => d._id))
+        .then(freshInfoDocs => {
+          freshInfoDocs.forEach(({doc: freshInfoDoc}, idx) => {
+            conflictingInfoDocs[idx].initial_replication_date = freshInfoDoc.initial_replication_date;
+            conflictingInfoDocs[idx].latest_replication_date = freshInfoDoc.latest_replication_date;
+          });
 
-        freshInfoDocs.forEach((freshInfoDoc, idx) => {
-          // We aren't attempting to merge this: as of writing transitions do not run in parallel,
-          // and so there should be no way that the conflicted version of the document has any new
-          // information to add.
-          freshInfoDoc.transitions = conflictingInfoDocs[idx].transitions;
-          freshInfoDoc.muting_history = conflictingInfoDocs[idx].muting_history;
+          return bulkUpdate(conflictingInfoDocs);
         });
-
-        return bulkUpdate(freshInfoDocs);
-      });
     }
   });
 };
@@ -297,11 +285,15 @@ module.exports = {
     db.medic = medicDb;
     db.sentinel = sentinelDb;
   },
-  get: change => resolveInfoDocs([change]).then(([firstResult]) => firstResult),
+  get: change => resolveInfoDocs([change], true).then(([firstResult]) => firstResult),
   delete: change => deleteInfoDoc(change),
   updateTransition: (change, transition, ok) =>
     updateTransition(change, transition, ok),
-  bulkGet: resolveInfoDocs,
+  //
+  // NB: resolveInfoDocs does not guarantee that its returned values are in the same order as
+  // changes
+  //
+  bulkGet: changes => resolveInfoDocs(changes, false),
   bulkUpdate: bulkUpdate,
   saveTransitions: saveTransitions,
 

@@ -4,6 +4,8 @@ const db = require('../db'),
       moment = require('moment'),
       infodoc = require('@medic/infodoc');
 
+infodoc.initLib(db.medic, db.sentinel);
+
 const BATCH_SIZE = 50;
 
 const getContact = doc => {
